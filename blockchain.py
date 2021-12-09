@@ -36,29 +36,62 @@ def add_value(value=33.33):
         blockchain.append([blockchain[-1], value])
 
 
-while True:
+def is_chain_valid():
+    prev_idx = len(blockchain) - 2
+
+    # Use a reverse iterator over blockchain elements
+    for block_to_check in reversed(blockchain):
+        # First entry of current block must equal entire previous block
+        if (prev_idx >= 0 and (block_to_check[0] != blockchain[prev_idx])):
+            return False
+
+        prev_idx -= 1
+    else:
+        print('Chain validation completed')
+
+    return True
+
+finished = False
+
+while not finished:
     print('==========================================')
     print('| Please choose an option:')
     print('| 1 : Add a new transaction value')
     print('| 2 : Output the current blockchain blocks')
+    print('| H : Hack the blockchain !')
+    print('| V : Verify the blockchain')
     print('| X : Quit')
     print('==========================================')
 
     option = input('> ')
+    bc_len = len(blockchain)
 
     if option.upper() == 'X':
-        break
+        finished = True
     elif option == '1':
         txn_amt = get_transaction_amount()
         # Use ternary operator
         add_value(txn_amt) if txn_amt is not None else add_value()
     elif option == '2':
-        bc_len = len(blockchain)
         if bc_len == 0:
             print('Blockchain is currently empty')
         else:
             print('Blockchain has ' + str(bc_len) + ' block' + ('s' if bc_len > 1 else ''))
+            block_idx = 1
             for block in blockchain:
-                print(block)
+                padding = ' ' * (len(blockchain) - block_idx)
+                print(('*' * block_idx) + padding + ' : ' + padding + str(block))
+                block_idx += 1
+    elif option.upper() == 'H':
+        if bc_len >= 1:
+            blockchain[0] = [99.99]
+    elif option.upper() == 'V':
+        if not is_chain_valid():
+            print('Blockchain is invalid !!')
+            finished = True
+        else:
+            print('Blockchain is valid...')
     else:
         print('! Invalid option... try again')
+else:
+    print("That's it...we're all finished")
