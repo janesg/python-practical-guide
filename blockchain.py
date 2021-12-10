@@ -1,48 +1,90 @@
 # This our initial blockchain implementation
 # - formatting follows PEP 8 standards
+import hashlib
 import re
 
-# Regex for validating amount input
+# Regex for validating transaction amount input
 int_pattern = re.compile("^[0-9]*$")
 float_pattern = re.compile("^[0-9]*.[0-9]*$")
 
 # Start with an empty blockchain
 blockchain = []
 
-
-def get_transaction_amount():
-    txn_amount = input('Please enter transaction amount : ')
-
-    if txn_amount == '':
-        return
-    elif float_pattern.match(txn_amount) or int_pattern.match(txn_amount):
-        return float(txn_amount)
-    else:
-        print('! Invalid transaction amount... try again')
-        return get_transaction_amount()
+open_transactions = []
+balances = {}
+node_owner = 'Gary'
 
 
-def add_value(value=33.33):
+def get_transaction_data():
+    txn_recipient = input('Please enter the transaction recipient : ')
+
+    while True:
+        txn_amount = input('Please enter the transaction amount : ')
+
+        if txn_amount == '':
+            return txn_recipient, None
+        elif float_pattern.match(txn_amount) or int_pattern.match(txn_amount):
+            return txn_recipient, float(txn_amount)
+        else:
+            print('! Invalid transaction amount... try again')
+
+
+def add_transaction(sender, recipient, amount=1.0):
     """
-    This is the way that we document our function using a multi-line description.
-    When we hover over function call, the IDE will display this documentation.
+    Create a new open transaction.
 
     Arguments:
-        :value: the transaction amount to be added (default = 33.33).
+        :sender: the sender of the transaction amount.
+        :recipient: the intended recipient of the transaction amount.
+        :amount: the transaction amount (default = 1.0)
     """
-    if len(blockchain) == 0:
-        blockchain.append([value])
-    else:
-        blockchain.append([blockchain[-1], value])
+    transaction = {
+        'sender': sender,
+        'recipient': recipient,
+        'amount': amount
+    }
+    open_transactions.append(transaction)
+
+
+def mine_block():
+    block = {
+        'prev_#': calc_hash(blockchain[-1]) if len(blockchain) > 0 else '',
+        'idx': len(blockchain),
+        # Demo simple list comprehension instead of using open_transactions.copy()
+        'txns': [elem for elem in open_transactions]
+    }
+    blockchain.append(block)
+    open_transactions.clear()
+
+    # Now transactions are confirmed, update balances
+    for txn in block['txns']:
+        txn_sender = txn['sender']
+        txn_recipient = txn['recipient']
+        txn_amount = txn['amount']
+
+        if txn_sender in balances:
+            balances[txn_sender] = balances[txn_sender] - txn_amount
+        else:
+            balances[txn_sender] = -txn_amount
+
+        if txn_recipient in balances:
+            balances[txn_recipient] = balances[txn_recipient] + txn_amount
+        else:
+            balances[txn_recipient] = txn_amount
+
+
+def calc_hash(data):
+    return hashlib.sha256(str(data).encode()).hexdigest()
 
 
 def is_chain_valid():
+    # Start prev_idx at the second to last element
     prev_idx = len(blockchain) - 2
 
-    # Use a reverse iterator over blockchain elements
+    # Use a reverse iterator over blockchain elements to process last block first
     for block_to_check in reversed(blockchain):
-        # First entry of current block must equal entire previous block
-        if (prev_idx >= 0 and (block_to_check[0] != blockchain[prev_idx])):
+        # First element of current block must equal the entire previous block
+        if prev_idx >= 0 and (block_to_check['prev_#'] != calc_hash(blockchain[prev_idx])):
             return False
 
         prev_idx -= 1
@@ -51,28 +93,48 @@ def is_chain_valid():
 
     return True
 
+
+def participants():
+    return sorted(balances.keys())
+
+
+def display_balances():
+    for participant in participants():
+        print('* ' + participant + ' has a balance of ' + str(balances[participant]))
+
+
 finished = False
 
 while not finished:
     print('==========================================')
     print('| Please choose an option:')
-    print('| 1 : Add a new transaction value')
-    print('| 2 : Output the current blockchain blocks')
+    print('| 1 : Add a new transaction')
+    print('| 2 : Mine block')
+    print('| 3 : Output the current blockchain blocks')
+    print('| 4 : Output the participants')
+    print('| 5 : Output balances')
     print('| H : Hack the blockchain !')
     print('| V : Verify the blockchain')
-    print('| X : Quit')
+    print('| Q : Quit')
     print('==========================================')
 
     option = input('> ')
     bc_len = len(blockchain)
 
-    if option.upper() == 'X':
+    if option.upper() == 'Q':
         finished = True
     elif option == '1':
-        txn_amt = get_transaction_amount()
-        # Use ternary operator
-        add_value(txn_amt) if txn_amt is not None else add_value()
+        # Tuple unpacking
+        recipient, amount = get_transaction_data()
+        # Ternary operator
+        add_transaction(node_owner, recipient, amount) if amount is not None else add_transaction(node_owner, recipient)
+        print(open_transactions)
     elif option == '2':
+        if len(open_transactions) == 0:
+            print('There are no open transactions to mine')
+        else:
+            mine_block()
+    elif option == '3':
         if bc_len == 0:
             print('Blockchain is currently empty')
         else:
@@ -80,14 +142,18 @@ while not finished:
             block_idx = 1
             for block in blockchain:
                 padding = ' ' * (len(blockchain) - block_idx)
-                print(('*' * block_idx) + padding + ' : ' + padding + str(block))
+                print(('*' * block_idx) + padding + ' : ' + str(block))
                 block_idx += 1
+    elif option == '4':
+        print('Transaction Participants: ' + ', '.join(participants()))
+    elif option == '5':
+        display_balances()
     elif option.upper() == 'H':
         if bc_len >= 1:
-            blockchain[0] = [99.99]
+            blockchain[0]['txns'][0]['amount'] = 99.99
     elif option.upper() == 'V':
         if not is_chain_valid():
-            print('Blockchain is invalid !!')
+            print('*** Blockchain is invalid !! ***')
             finished = True
         else:
             print('Blockchain is valid...')
