@@ -7,6 +7,10 @@ import re
 int_pattern = re.compile("^[0-9]*$")
 float_pattern = re.compile("^[0-9]*.[0-9]*$")
 
+# Reward earned by the node owner for mining a block
+MINING_SENDER = 'MINER'
+MINING_REWARD = 10.0
+
 # Start with an empty blockchain
 blockchain = []
 
@@ -47,10 +51,29 @@ def add_transaction(sender, recipient, amount=1.0):
 
 
 def mine_block():
+    # Validate that each transaction sender has necessary funds to meet
+    # their obligation when open transactions are netted
+    ot_senders = set(txn['sender'] for txn in open_transactions)
+
+    # Add in the mining reward transaction as it will impact the node owner's obligation
+    add_transaction(MINING_SENDER, node_owner, MINING_REWARD)
+
+    for participant in ot_senders:
+        sent_total = sum([txn['amount'] for txn in open_transactions if txn['sender'] == participant])
+        received_total = sum([txn['amount'] for txn in open_transactions if txn['recipient'] == participant])
+        net_sent = sent_total - received_total
+        current_balance = get_balance(participant)
+        if current_balance < net_sent:
+            print('*** ' + participant + ' has an obligation of ' + str(net_sent) +
+                  ' but an available balance of only ' + str(current_balance))
+
     block = {
         'prev_#': calc_hash(blockchain[-1]) if len(blockchain) > 0 else '',
         'idx': len(blockchain),
-        # Demo simple list comprehension instead of using open_transactions.copy()
+        # Demo simple list comprehension
+        # Alternatives:
+        #   open_transactions.copy()
+        #   open_transactions[:]
         'txns': [elem for elem in open_transactions]
     }
     blockchain.append(block)
@@ -62,15 +85,8 @@ def mine_block():
         txn_recipient = txn['recipient']
         txn_amount = txn['amount']
 
-        if txn_sender in balances:
-            balances[txn_sender] = balances[txn_sender] - txn_amount
-        else:
-            balances[txn_sender] = -txn_amount
-
-        if txn_recipient in balances:
-            balances[txn_recipient] = balances[txn_recipient] + txn_amount
-        else:
-            balances[txn_recipient] = txn_amount
+        balances[txn_sender] = get_balance(txn_sender) - txn_amount
+        balances[txn_recipient] = get_balance(txn_recipient) + txn_amount
 
 
 def calc_hash(data):
@@ -98,9 +114,13 @@ def participants():
     return sorted(balances.keys())
 
 
+def get_balance(participant):
+    return balances[participant] if participant in balances else 0.0
+
+
 def display_balances():
     for participant in participants():
-        print('* ' + participant + ' has a balance of ' + str(balances[participant]))
+        print('* ' + participant + ' has a balance of ' + str(get_balance(participant)))
 
 
 finished = False
