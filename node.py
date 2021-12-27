@@ -1,3 +1,4 @@
+from balance_manager import BalanceManager
 from blockchain import BlockChain
 import json
 import re
@@ -13,6 +14,7 @@ class Node:
     def __init__(self):
         self.node_id = 'Gary'
         self.block_chain = BlockChain(self.node_id)
+        self.balance_manager = BalanceManager()
 
     def process_input(self):
         finished = False
@@ -46,9 +48,13 @@ class Node:
                 if len(self.block_chain.open_txns) == 0:
                     print('INFO: There are no open transactions to mine')
                 else:
-                    if not self.block_chain.mine_block():
+                    mined_block = self.block_chain.mine_block(self.balance_manager.get_balance)
+                    if mined_block is None:
                         print('WARN: Unable to mine invalid open transactions ... clearing all open transactions')
                         self.block_chain.open_txns.clear()
+                    else:
+                        # Now transactions are confirmed, update balances
+                        self.balance_manager.update_balances_for_block(mined_block)
             elif option == '3':
                 if bc_len == 0:
                     print('INFO: Blockchain is currently empty')
@@ -62,9 +68,9 @@ class Node:
             elif option == '4':
                 print('Open Txns: ' + json.dumps([txn.to_ordered_dict() for txn in self.block_chain.open_txns]))
             elif option == '5':
-                print('Transaction Participants: {}'.format(', '.join(self.block_chain.balance_manager.participants())))
+                print('Transaction Participants: {}'.format(', '.join(self.balance_manager.participants())))
             elif option == '6':
-                self.block_chain.balance_manager.display_balances()
+                self.balance_manager.display_balances()
             elif option.upper() == 'V':
                 if not Verification.is_block_chain_valid(self.block_chain.chain):
                     print('ERROR: Blockchain is invalid...exiting')
@@ -94,4 +100,5 @@ class Node:
 if __name__ == '__main__':
     node = Node()
     node.block_chain.load_data()
+    node.balance_manager.initialize_balances(node.block_chain.chain)
     node.process_input()

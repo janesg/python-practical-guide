@@ -1,6 +1,5 @@
 # The blockchain implementation
 # - code formatting follows PEP 8 standards
-from balance_manager import BalanceManager
 from block import Block
 from hash_util import calc_hash
 import json
@@ -21,7 +20,6 @@ DATA_FILE_PATH = DATA_DIR + '/' + DATA_FILE
 class BlockChain:
     def __init__(self, hosting_node_id):
         self.hosting_node_id = hosting_node_id
-        self.balance_manager = BalanceManager()
         # Start with an empty blockchain
         self.chain = []
         # Current open (unconfirmed) transactions
@@ -66,8 +64,6 @@ class BlockChain:
                                     dict_txn['timestamp']
                                 )
                             )
-
-                        self.balance_manager.initialize_balances(self.chain)
                     else:
                         print('ERROR: Invalid data file contents')
 
@@ -110,7 +106,7 @@ class BlockChain:
         """
         self.open_txns.append(Transaction(sender, recipient, amount))
 
-    def mine_block(self):
+    def mine_block(self, get_balance):
         # Validate that each transaction sender has necessary funds to meet
         # their obligation when open transactions are netted
         ot_senders = set(txn.sender for txn in self.open_txns)
@@ -127,18 +123,15 @@ class BlockChain:
             sent_total = sum([txn.amount for txn in self.open_txns if txn.sender == participant])
             received_total = sum([txn.amount for txn in self.open_txns if txn.recipient == participant])
             net_sent = sent_total - received_total
-            current_balance = self.balance_manager.get_balance(participant)
+            current_balance = get_balance(participant)
             if current_balance < net_sent:
                 print('*** {} has an obligation of {:.2f}, but an available balance of only {:.2f}'
                       .format(participant, net_sent, current_balance))
-                return False
+                return None
 
         block = Block(len(self.chain), prev_block_hash, self.open_txns, pow_value)
         self.chain.append(block)
         self.open_txns.clear()
         self.save_data()
 
-        # Now transactions are confirmed, update balances
-        self.balance_manager.update_balances_for_block(block)
-
-        return True
+        return block
