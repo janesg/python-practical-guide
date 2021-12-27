@@ -88,9 +88,9 @@ class BlockChain:
             print('Unable to save data as block chain is not valid')
 
     @staticmethod
-    def proof_of_work(txns, hash):
+    def proof_of_work(txns, prev_block_hash):
         nonce = 0
-        while not Verification.is_pow_valid(txns, hash, nonce):
+        while not Verification.is_pow_valid(txns, prev_block_hash, nonce):
             nonce += 1
 
         return nonce
@@ -107,27 +107,20 @@ class BlockChain:
         self.open_txns.append(Transaction(sender, recipient, amount))
 
     def mine_block(self, get_balance):
-        # Validate that each transaction sender has necessary funds to meet
-        # their obligation when open transactions are netted
-        ot_senders = set(txn.sender for txn in self.open_txns)
-
         prev_block_hash = calc_hash(str(self.chain[-1])) if len(self.chain) > 0 else ''
 
         # Calculate POW on current open transactions before adding the reward transaction
         pow_value = self.proof_of_work(self.open_txns, prev_block_hash)
 
-        # Add in the mining reward transaction as it will impact the node owner's obligation
+        # Add in the mining reward transaction as it will impact the hosting node's obligation
         self.add_transaction(MINING_SENDER, self.hosting_node_id, MINING_REWARD)
 
-        for participant in ot_senders:
-            sent_total = sum([txn.amount for txn in self.open_txns if txn.sender == participant])
-            received_total = sum([txn.amount for txn in self.open_txns if txn.recipient == participant])
-            net_sent = sent_total - received_total
-            current_balance = get_balance(participant)
-            if current_balance < net_sent:
-                print('*** {} has an obligation of {:.2f}, but an available balance of only {:.2f}'
-                      .format(participant, net_sent, current_balance))
-                return None
+        # Validate that each transaction sender has necessary funds to meet
+        # their obligation when open transactions are netted
+        if not Verification.check_open_txn_funds_available(self.open_txns, get_balance, MINING_SENDER):
+            print('WARN: Unable to mine invalid open transactions ... clearing all open transactions')
+            self.open_txns.clear()
+            return None
 
         block = Block(len(self.chain), prev_block_hash, self.open_txns, pow_value)
         self.chain.append(block)

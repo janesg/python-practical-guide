@@ -49,10 +49,7 @@ class Node:
                     print('INFO: There are no open transactions to mine')
                 else:
                     mined_block = self.block_chain.mine_block(self.balance_manager.get_balance)
-                    if mined_block is None:
-                        print('WARN: Unable to mine invalid open transactions ... clearing all open transactions')
-                        self.block_chain.open_txns.clear()
-                    else:
+                    if mined_block is not None:
                         # Now transactions are confirmed, update balances
                         self.balance_manager.update_balances_for_block(mined_block)
             elif option == '3':

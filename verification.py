@@ -42,3 +42,22 @@ class Verification:
             prev_idx -= 1
 
         return True
+
+    @staticmethod
+    def check_open_txn_funds_available(open_txns, get_balance, mining_identity):
+        # Validate that each transaction sender has necessary funds to meet
+        # their obligation when open transactions are netted.
+        # ...exclude the mining identity
+        ot_senders = set(txn.sender for txn in open_txns if txn.sender is not mining_identity)
+
+        for participant in ot_senders:
+            sent_total = sum([txn.amount for txn in open_txns if txn.sender == participant])
+            received_total = sum([txn.amount for txn in open_txns if txn.recipient == participant])
+            net_sent = sent_total - received_total
+            current_balance = get_balance(participant)
+            if current_balance < net_sent:
+                print('*** {} has an obligation of {:.2f}, but an available balance of only {:.2f}'
+                      .format(participant, net_sent, current_balance))
+                return False
+
+        return True
