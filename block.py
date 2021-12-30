@@ -9,6 +9,7 @@ class Block:
         # If at some point access has to be controlled we use properties
         self.idx = idx
         self.prev_hash = prev_hash
+        # Using list comprehension
         # Alternatives:
         #   list copy function: txns.copy()
         #   open-ended range: txns[:]
