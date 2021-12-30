@@ -2,7 +2,8 @@ from balance_manager import BalanceManager
 from blockchain import BlockChain
 import json
 import re
-from verification import Verification
+from utility.verification import Verification
+from wallet import Wallet
 
 
 # Regex for validating transaction amount input
@@ -12,9 +13,15 @@ float_pattern = re.compile('^[0-9]*.[0-9]*$')
 
 class Node:
     def __init__(self):
-        self.node_id = 'Gary'
-        self.block_chain = BlockChain(self.node_id)
+        self.wallet = Wallet()
+        self.block_chain = None
         self.balance_manager = BalanceManager()
+
+    def init_block_chain(self):
+        self.block_chain = BlockChain(self.wallet.public_key)
+        self.block_chain.load_data()
+        # Notice that we initialize balances using a copy of the chain (via getter)
+        self.balance_manager.initialize_balances(self.block_chain.chain)
 
     def process_input(self):
         finished = False
@@ -28,6 +35,9 @@ class Node:
             print('| 4 : Output the current open transactions')
             print('| 5 : Output the participants')
             print('| 6 : Output balances')
+            print('| 7 : Load wallet')
+            print('| 8 : Create new wallet')
+            print('| 9 : Save wallet')
             print('| V : Verify the blockchain')
             print('| Q : Quit')
             print('==========================================')
@@ -39,11 +49,14 @@ class Node:
                 self.block_chain.save_data()
                 finished = True
             elif option == '1':
-                # Tuple unpacking
-                recipient, amount = Node.get_transaction_data()
-                # Ternary operator
-                self.block_chain.add_transaction(self.node_id, recipient, amount) \
-                    if amount is not None else self.block_chain.add_transaction(self.node_id, recipient)
+                if self.wallet.public_key is None:
+                    print('WARN: No wallet key available. Load or create wallet before adding transaction')
+                else:
+                    # Tuple unpacking
+                    recipient, amount = Node.get_transaction_data()
+                    signature = self.wallet.sign_txn(self.wallet.public_key, recipient, amount)
+                    # Ternary operator
+                    self.block_chain.add_transaction(self.wallet.public_key, recipient, amount, signature)
             elif option == '2':
                 if len(self.block_chain.open_txns) == 0:
                     print('INFO: There are no open transactions to mine')
@@ -68,6 +81,14 @@ class Node:
                 print('Transaction Participants: {}'.format(', '.join(self.balance_manager.participants())))
             elif option == '6':
                 self.balance_manager.display_balances()
+            elif option == '7':
+                self.wallet.load_keys()
+                self.init_block_chain()
+            elif option == '8':
+                self.wallet.create_keys()
+                self.init_block_chain()
+            elif option == '9':
+                self.wallet.save_keys()
             elif option.upper() == 'V':
                 if not Verification.is_block_chain_valid(self.block_chain.chain):
                     print('ERROR: Blockchain is invalid...exiting')
@@ -81,21 +102,24 @@ class Node:
 
     @staticmethod
     def get_transaction_data():
-        txn_recipient = input('Please enter the transaction recipient : ')
+        txn_recipient = ''
+        while txn_recipient == '':
+            txn_recipient = input('Please enter the transaction recipient : ')
 
         while True:
             txn_amount = input('Please enter the transaction amount : ')
 
             if txn_amount == '':
-                return txn_recipient, None
+                print('You must enter a transaction amount... please try again')
             elif float_pattern.match(txn_amount) or int_pattern.match(txn_amount):
                 return txn_recipient, float(txn_amount)
             else:
                 print('Invalid transaction amount... please try again')
 
 
+
+
 if __name__ == '__main__':
     node = Node()
-    node.block_chain.load_data()
-    node.balance_manager.initialize_balances(node.block_chain.chain)
+    node.init_block_chain()
     node.process_input()

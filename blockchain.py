@@ -1,11 +1,11 @@
 # The blockchain implementation
 # - code formatting follows PEP 8 standards
 from block import Block
-from hash_util import calc_hash
 import json
 import os
 from transaction import Transaction
-from verification import Verification
+from utility.hash_util import calc_hash
+from utility.verification import Verification
 
 # Reward earned by the node owner for mining a block
 MINING_SENDER = 'MINER'
@@ -66,6 +66,7 @@ class BlockChain:
                                         dict_txn['sender'],
                                         dict_txn['recipient'],
                                         dict_txn['amount'],
+                                        dict_txn['signature'],
                                         dict_txn['timestamp']
                                     ) for dict_txn in dict_block['txns']],
                                     dict_block['proof'],
@@ -75,14 +76,17 @@ class BlockChain:
 
                         self.__open_txns.clear()
                         for dict_txn in open_transactions_loaded:
-                            self.__open_txns.append(
-                                Transaction(
-                                    dict_txn['sender'],
-                                    dict_txn['recipient'],
-                                    dict_txn['amount'],
-                                    dict_txn['timestamp']
-                                )
+                            txn = Transaction(
+                                dict_txn['sender'],
+                                dict_txn['recipient'],
+                                dict_txn['amount'],
+                                dict_txn['signature'],
+                                dict_txn['timestamp']
                             )
+                            if Verification.is_txn_signature_valid(txn, MINING_SENDER):
+                                self.__open_txns.append(txn)
+                            else:
+                                print('WARN: Discarding open transaction with invalid signature')
                     else:
                         print('ERROR: Invalid data file contents')
 
@@ -115,30 +119,43 @@ class BlockChain:
 
         return nonce
 
-    def add_transaction(self, sender, recipient, amount=1.0):
+    def add_transaction(self, sender, recipient, amount, signature):
         """
         Create a new open transaction.
 
         Arguments:
             :sender: the sender of the transaction amount.
             :recipient: the intended recipient of the transaction amount.
-            :amount: the transaction amount (default = 1.0)
+            :amount: the transaction amount
+            :signature: the signature of the transaction
         """
-        self.__open_txns.append(Transaction(sender, recipient, amount))
+        if self.__hosting_node_id is None:
+            print('WARN: Unable to add transaction. Hosting Node Id not set')
+        else:
+            txn = Transaction(sender, recipient, amount, signature)
+            if Verification.is_txn_signature_valid(txn, MINING_SENDER):
+                self.__open_txns.append(txn)
+            else:
+                print('WARN: Unable to add transaction. Signature is invalid')
 
     def mine_block(self, get_balance):
+        if self.__hosting_node_id is None:
+            print('WARN: Unable to mine block. Hosting Node Id not set')
+            return None
+
         prev_block_hash = calc_hash(str(self.__chain[-1])) if len(self.__chain) > 0 else ''
 
         # Calculate POW on current open transactions before adding the reward transaction
         pow_value = self.proof_of_work(self.open_txns, prev_block_hash)
 
         # Add in the mining reward transaction as it will impact the hosting node's obligation
-        self.add_transaction(MINING_SENDER, self.__hosting_node_id, MINING_REWARD)
+        # - Note: mining reward transaction doesn't require a signature
+        self.add_transaction(MINING_SENDER, self.__hosting_node_id, MINING_REWARD, '')
 
         # Validate that each transaction sender has necessary funds to meet
         # their obligation when open transactions are netted
         if not Verification.check_open_txn_funds_available(self.open_txns, get_balance, MINING_SENDER):
-            print('WARN: Unable to mine invalid open transactions ... clearing all open transactions')
+            print('WARN: Unable to mine block. Invalid open transactions ... clearing all open transactions')
             self.__open_txns.clear()
             return None
 

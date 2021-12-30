@@ -3,17 +3,19 @@ from time import time
 
 
 class Transaction:
-    def __init__(self, sender, recipient, amount, timestamp=None):
+    def __init__(self, sender, recipient, amount, signature, timestamp=None):
         self.sender = sender
         self.recipient = recipient
         self.amount = amount
+        self.signature = signature
         self.timestamp = time() if timestamp is None else timestamp
 
     def __str__(self):
-        return '{}:{}:{}:{}'.format(
+        return '{}:{}:{}:{}:{}'.format(
             self.sender,
             self.recipient,
             self.amount,
+            self.signature,
             self.timestamp)
 
     def to_ordered_dict(self):
@@ -22,5 +24,6 @@ class Transaction:
             ('sender', self.sender),
             ('recipient', self.recipient),
             ('amount', self.amount),
+            ('signature', self.signature),
             ('timestamp', self.timestamp)
         ])

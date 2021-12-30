@@ -12,6 +12,7 @@ class BalanceManager:
 
     def initialize_balances(self, block_chain):
         print('Initialising balances...')
+        self.__balances = {}
         for block in block_chain:
             self.update_balances_for_block(block)
 

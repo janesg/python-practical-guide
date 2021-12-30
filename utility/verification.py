@@ -1,5 +1,10 @@
-from hash_util import calc_hash
+""" Provides block chain related verification methods """
+import binascii
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.Signature import PKCS1_v1_5
 import json
+from utility.hash_util import calc_hash
 
 
 class Verification:
@@ -61,3 +66,13 @@ class Verification:
                 return False
 
         return True
+
+    @staticmethod
+    def is_txn_signature_valid(txn, mining_identity):
+        if txn.sender == mining_identity:
+            return True
+
+        public_key = RSA.import_key(binascii.unhexlify(txn.sender))
+        verifier = PKCS1_v1_5.new(public_key)
+        generated_hash = SHA256.new((str(txn.sender) + str(txn.recipient) + str(txn.amount)).encode('utf8'))
+        return verifier.verify(generated_hash, binascii.unhexlify(txn.signature))
