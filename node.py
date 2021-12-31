@@ -1,125 +1,152 @@
 from balance_manager import BalanceManager
 from blockchain import BlockChain
-import json
-import re
-from utility.verification import Verification
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from http import HTTPStatus
 from wallet import Wallet
 
+py_coin_app = Flask(__name__)
+CORS(py_coin_app)
 
-# Regex for validating transaction amount input
-int_pattern = re.compile('^[0-9]*$')
-float_pattern = re.compile('^[0-9]*.[0-9]*$')
-
-
-class Node:
-    def __init__(self):
-        self.wallet = Wallet()
-        self.block_chain = None
-        self.balance_manager = BalanceManager()
-
-    def init_block_chain(self):
-        self.block_chain = BlockChain(self.wallet.public_key)
-        self.block_chain.load_data()
-        # Notice that we initialize balances using a copy of the chain (via getter)
-        self.balance_manager.initialize_balances(self.block_chain.chain)
-
-    def process_input(self):
-        finished = False
-
-        while not finished:
-            print('==========================================')
-            print('| Please choose an option:')
-            print('| 1 : Add a new transaction')
-            print('| 2 : Mine block')
-            print('| 3 : Output the current blockchain blocks')
-            print('| 4 : Output the current open transactions')
-            print('| 5 : Output the participants')
-            print('| 6 : Output balances')
-            print('| 7 : Load wallet')
-            print('| 8 : Create new wallet')
-            print('| 9 : Save wallet')
-            print('| V : Verify the blockchain')
-            print('| Q : Quit')
-            print('==========================================')
-
-            option = input('> ')
-            bc_len = len(self.block_chain.chain)
-
-            if option.upper() == 'Q':
-                self.block_chain.save_data()
-                finished = True
-            elif option == '1':
-                if self.wallet.public_key is None:
-                    print('WARN: No wallet key available. Load or create wallet before adding transaction')
-                else:
-                    # Tuple unpacking
-                    recipient, amount = Node.get_transaction_data()
-                    signature = self.wallet.sign_txn(self.wallet.public_key, recipient, amount)
-                    # Ternary operator
-                    self.block_chain.add_transaction(self.wallet.public_key, recipient, amount, signature)
-            elif option == '2':
-                if len(self.block_chain.open_txns) == 0:
-                    print('INFO: There are no open transactions to mine')
-                else:
-                    mined_block = self.block_chain.mine_block(self.balance_manager.get_balance)
-                    if mined_block is not None:
-                        # Now transactions are confirmed, update balances
-                        self.balance_manager.update_balances_for_block(mined_block)
-            elif option == '3':
-                if bc_len == 0:
-                    print('INFO: Blockchain is currently empty')
-                else:
-                    print('Blockchain has {} block{}'.format(bc_len, ('s' if bc_len > 1 else '')))
-                    block_idx = 1
-                    for block in self.block_chain.chain:
-                        padding = ' ' * (len(self.block_chain.chain) - block_idx)
-                        print(('*' * block_idx) + padding + ' : ' + str(block))
-                        block_idx += 1
-            elif option == '4':
-                print('Open Txns: ' + json.dumps([txn.to_ordered_dict() for txn in self.block_chain.open_txns]))
-            elif option == '5':
-                print('Transaction Participants: {}'.format(', '.join(self.balance_manager.participants())))
-            elif option == '6':
-                self.balance_manager.display_balances()
-            elif option == '7':
-                self.wallet.load_keys()
-                self.init_block_chain()
-            elif option == '8':
-                self.wallet.create_keys()
-                self.init_block_chain()
-            elif option == '9':
-                self.wallet.save_keys()
-            elif option.upper() == 'V':
-                if not Verification.is_block_chain_valid(self.block_chain.chain):
-                    print('ERROR: Blockchain is invalid...exiting')
-                    finished = True
-                else:
-                    print('Blockchain is valid...')
-            else:
-                print('WARN: Invalid option... try again')
-        else:
-            print("That's it...we're all finished")
-
-    @staticmethod
-    def get_transaction_data():
-        txn_recipient = ''
-        while txn_recipient == '':
-            txn_recipient = input('Please enter the transaction recipient : ')
-
-        while True:
-            txn_amount = input('Please enter the transaction amount : ')
-
-            if txn_amount == '':
-                print('You must enter a transaction amount... please try again')
-            elif float_pattern.match(txn_amount) or int_pattern.match(txn_amount):
-                return txn_recipient, float(txn_amount)
-            else:
-                print('Invalid transaction amount... please try again')
+wallet = Wallet()
+block_chain = None
+balance_manager = BalanceManager()
 
 
+def init_block_chain():
+    global block_chain
+    block_chain = BlockChain(wallet.public_key)
+    block_chain.load_data()
+    # Notice that we initialize balances using a copy of the chain (via getter)
+    balance_manager.initialize_balances(block_chain.chain)
+
+
+@py_coin_app.route('/', methods=['GET'])
+def get_ui():
+    return send_from_directory('ui', 'node.html')
+
+
+@py_coin_app.route('/wallet', methods=['POST'])
+def create_keys():
+    wallet.create_keys()
+    if wallet.save_keys():
+        init_block_chain()
+        response = {
+            'public_key': wallet.public_key,
+            'private_key': wallet.private_key,
+            'funds_available': balance_manager.get_balance(wallet.public_key)
+        }
+        return jsonify(response), HTTPStatus.CREATED
+    else:
+        response = {
+            'message': 'Failed to save wallet keys'
+        }
+        return jsonify(response), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@py_coin_app.route('/wallet', methods=['GET'])
+def load_keys():
+    if wallet.load_keys():
+        init_block_chain()
+        response = {
+            'public_key': wallet.public_key,
+            'private_key': wallet.private_key,
+            'funds_available': balance_manager.get_balance(wallet.public_key)
+        }
+        return jsonify(response), HTTPStatus.OK
+    else:
+        response = {
+            'message': 'Failed to load wallet keys'
+        }
+        return jsonify(response), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@py_coin_app.route('/balance', methods=['GET'])
+def get_balance():
+    response = {
+        'balance': balance_manager.get_balance(wallet.public_key)
+    }
+    return jsonify(response), HTTPStatus.OK
+
+
+@py_coin_app.route('/transactions', methods=['POST'])
+def add_transaction():
+    # Respond straight away if wallet keys are not available
+    if wallet.public_key is None:
+        response = {
+            'message': 'Failed to add transaction. Wallet contains no keys'
+        }
+        return jsonify(response), HTTPStatus.CONFLICT
+
+    req_body = request.get_json()
+    if not req_body:
+        response = {
+            'message': 'No transaction data provided'
+        }
+        return jsonify(response), HTTPStatus.BAD_REQUEST
+
+    required_fields = ['recipient', 'amount']
+    # Check whether request body contains all required fields
+    if not all(field in req_body for field in required_fields):
+        response = {
+            'message': 'Transaction data is missing one or more required fields: ' + str(required_fields)
+        }
+        return jsonify(response), HTTPStatus.BAD_REQUEST
+
+    signature = wallet.sign_txn(wallet.public_key, req_body['recipient'], req_body['amount'])
+    added_txn = block_chain.add_transaction(wallet.public_key, req_body['recipient'], req_body['amount'], signature)
+    if added_txn is not None:
+        response = {
+            'message': 'Transaction added successfully',
+            'txn': added_txn.__dict__.copy()
+        }
+        return jsonify(response), HTTPStatus.CREATED
+    else:
+        response = {
+            'message': 'Failed to add transaction'
+        }
+        return jsonify(response), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@py_coin_app.route('/transactions', methods=['GET'])
+def get_transactions():
+    dict_txns = [txn.__dict__ for txn in block_chain.open_txns]
+    return jsonify(dict_txns), HTTPStatus.OK
+
+
+@py_coin_app.route('/mine', methods=['POST'])
+def mine():
+    mined_block = block_chain.mine_block(balance_manager.get_balance)
+    if mined_block is not None:
+        # Now transactions are confirmed, update balances
+        balance_manager.update_balances_for_block(mined_block)
+        dict_block = mined_block.__dict__.copy()
+        dict_block['txns'] = [txn.__dict__ for txn in dict_block['txns']]
+        response = {
+            'message': 'Block mined successfully',
+            'block': dict_block,
+            'funds_available': balance_manager.get_balance(wallet.public_key)
+        }
+        return jsonify(response), HTTPStatus.CREATED
+    else:
+        response = {
+            'message': 'Mine block failed',
+            'wallet_initialized': wallet.public_key is not None
+        }
+        return jsonify(response), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@py_coin_app.route('/chain', methods=['GET'])
+def get_chain():
+    chain_snapshot = block_chain.chain
+    # Our Block and Transaction objects are not JSON serializable
+    # so we must convert them into dictionaries
+    dict_chain = [block.__dict__.copy() for block in chain_snapshot]
+    for dict_block in dict_chain:
+        dict_block['txns'] = [txn.__dict__ for txn in dict_block['txns']]
+    return jsonify(dict_chain), HTTPStatus.OK
 
 
 if __name__ == '__main__':
-    node = Node()
-    node.init_block_chain()
-    node.process_input()
+    init_block_chain()
+    py_coin_app.run(host='0.0.0.0', port=5000)

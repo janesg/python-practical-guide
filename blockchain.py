@@ -131,12 +131,15 @@ class BlockChain:
         """
         if self.__hosting_node_id is None:
             print('WARN: Unable to add transaction. Hosting Node Id not set')
+            return None
         else:
             txn = Transaction(sender, recipient, amount, signature)
             if Verification.is_txn_signature_valid(txn, MINING_SENDER):
                 self.__open_txns.append(txn)
+                return txn
             else:
                 print('WARN: Unable to add transaction. Signature is invalid')
+                return None
 
     def mine_block(self, get_balance):
         if self.__hosting_node_id is None:
