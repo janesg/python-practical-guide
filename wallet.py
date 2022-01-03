@@ -5,11 +5,18 @@ from Crypto.Signature import PKCS1_v1_5
 import Crypto.Random
 
 
+# Data file info
+DATA_DIR = './data'
+DATA_FILE = 'wallet'
+DATA_FILE_PATH = DATA_DIR + '/' + DATA_FILE
+
+
 class Wallet:
 
-    def __init__(self):
+    def __init__(self, node_id):
         self.private_key = None
         self.public_key = None
+        self.__node_id = node_id
 
     @staticmethod
     def generate_keys():
@@ -29,7 +36,7 @@ class Wallet:
             return False
         else:
             try:
-                with open('./data/wallet.txt', mode='w') as f:
+                with open('{}_{}'.format(DATA_FILE_PATH, self.__node_id), mode='w') as f:
                     f.write(self.public_key + '\n')
                     f.write(self.private_key)
                 return True
@@ -39,7 +46,7 @@ class Wallet:
 
     def load_keys(self):
         try:
-            with open('./data/wallet.txt', mode='r') as f:
+            with open('{}_{}'.format(DATA_FILE_PATH, self.__node_id), mode='r') as f:
                 keys = f.readlines()
                 self.public_key = keys[0][:-1]
                 self.private_key = keys[1]
